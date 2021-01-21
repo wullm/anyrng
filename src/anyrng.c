@@ -33,14 +33,19 @@ double custom_pdf(double x, void *params) {
   return (x <= 0.0) ? 0.0 : x * x / (exp((x - mu) / T) + 1.0);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     /* Initialize the inverse transform sampler */
     struct sampler rng;
     double pars[2] = {1.0, 0.0};
     init_sampler(&rng, custom_pdf, 1e-5, 25.0, &pars);
 
+    if (argc < 2) {
+        printf("Usage: ./anyrng [header filename]\n");
+        return 0;
+    }
+
     /* Dump the tables and an inline rng method to a header file */
-    char fname[50] = "header.h";
+    char *fname = argv[1];
     generate_header(&rng, fname);
     printf("Custom header exported to %s.\n", fname);
 
@@ -76,7 +81,7 @@ void generate_header(struct sampler *rng, char *fname) {
                "*  @brief Custom header file generated with AnyRNG by Willem Elbers. Allows \n"
                "*  generating pseudo-random numbers from a predefined distribution using fast \n"
                "*  numerical inversion (Hormann & Leydold, 2003). For more details, refer to\n"
-               "*  http://github.com/wullm/AnyRNG.\n"
+               "*  https://github.com/wullm/AnyRNG.\n"
                "*/\n\n", fname);
 
     /* Define the structs */

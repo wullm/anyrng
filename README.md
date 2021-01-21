@@ -29,7 +29,7 @@ changed, the program can be compiled and run with
 
 ```console
 make
-./anyrng
+./anyrng [header filename]
 ```
 
 This will produce a stand alone header file that can easily be included

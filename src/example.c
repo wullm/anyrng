@@ -17,8 +17,8 @@
  *
  ******************************************************************************/
 
-/* This custom header needs to be generated first with the main program! */
-#include "../header.h"
+/* A custom header like this can be generated with the main program! */
+#include "../fermi_dirac.h"
 
 /* A xorshift random number generator */
 #include "../include/random_xorshift.h"
