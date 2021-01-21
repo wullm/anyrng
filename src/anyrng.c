@@ -37,7 +37,9 @@ int main(int argc, char *argv[]) {
     /* Initialize the inverse transform sampler */
     struct sampler rng;
     double pars[2] = {1.0, 0.0};
-    init_sampler(&rng, custom_pdf, 1e-5, 25.0, &pars);
+    double left_endpoint = 1e-5;
+    double right_endpoint = 25.0;
+    init_sampler(&rng, custom_pdf, left_endpoint, right_endpoint, &pars);
 
     if (argc < 2) {
         printf("Usage: ./anyrng [header filename]\n");

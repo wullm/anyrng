@@ -9,8 +9,9 @@ fast numerical inversion (Hormann & Leydold, 2003).
 Getting started:
 ----------------
 
-Edit src/anyrng.c to change the probability density function (pdf) and
-distribution parameters. An example pdf for a Fermi-Dirac distribution is:
+Edit src/anyrng.c to change the probability density function (pdf),
+distribution parameters, and the range of the quantile function F^-1. An
+example pdf for a Fermi-Dirac distribution is:
 
 ```
 double custom_pdf(double x, void *params) {
@@ -24,8 +25,9 @@ double custom_pdf(double x, void *params) {
 }
 ```
 
-The program automatically normalizes the pdf. Once the function has been
-changed, the program can be compiled and run with
+The program ensures that the pdf is normalized.  
+
+Once the function has been changed, the program can be compiled and run with
 
 ```console
 make
