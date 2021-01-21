@@ -1,4 +1,4 @@
-AnyRNG: A random number generator for arbitrary distributions  {#mainpage}
+AnyRNG: A random number generator for arbitrary distributions
 =============================================================
 
 Author: Willem Elbers
@@ -12,6 +12,7 @@ Getting started:
 Edit src/anyrng.c to change the probability density function (pdf) and
 distribution parameters. An example pdf for a Fermi-Dirac distribution is:
 
+```
 double custom_pdf(double x, void *params) {
   /* Unpack the parameters */
   double *pars = (double *)params;
@@ -21,16 +22,21 @@ double custom_pdf(double x, void *params) {
   /* Calculate the unnormalized Fermi-Dirac density function */
   return (x <= 0.0) ? 0.0 : x * x / (exp((x - mu) / T) + 1.0);
 }
+```
 
 The program automatically normalizes the pdf. Once the function has been
 changed, the program can be compiled and run with
 
+```console
 make
 ./anyrng
+```
 
 This will produce a stand alone header file that can easily be included
-elsewhere. An example program is provided, which can be compiled and run
-- after generating the header - with
+elsewhere. An example program is provided, which can be compiled and run,
+after generating the header, with
 
+```console
 make example
 ./example
+```
