@@ -64,20 +64,24 @@ double numerical_cdf(double xl, double xr, pdf f, void *params) {
  *
  * @param s The #sampler to initialize
  * @param pdf Function reference of the probability density function
+ * @param df Optional function reference to derivative of pdf, can be NULL
  * @param xl Left endpoint of the domain
  * @param xr Right endpoint of the domain
+ * @param tol Tolerance for the Hermite interpolation
  * @param params Parameters to be passed to the pdf
  *
  * We will compute Hermite polynomial approximations of the cdf F(X) in
  * discrete intervals, which are then used to quickly evaluate the inverse
  * transform X = F^-1(u) of a uniform random variate u.
  */
-void init_sampler(struct sampler *s, pdf f, double xl, double xr,
-                  void *params) {
+void init_sampler(struct sampler *s, pdf f, pdf df, double xl, double xr,
+                  double tol, void *params) {
   /* Store the parameters and endpoints */
   s->xl = xl;
   s->xr = xr;
   s->f = f;
+  s->df = df;
+  s->tol = tol;
   s->params = params;
 
   /* Normalization of the pdf */
@@ -140,14 +144,37 @@ void init_sampler(struct sampler *s, pdf f, double xl, double xr,
     /* Evaluate the error at the midpoint */
     double u = 0.5 * (iv->Fr + iv->Fl);
     double H = iv->a0 + iv->a1 * 0.5 + iv->a2 * 0.25 + iv->a3 * 0.125;
-    iv->error = fabs(s->norm * numerical_cdf(xl, H, f, params) - u);
+    double error = fabs(s->norm * numerical_cdf(xl, H, f, params) - u);
 
     /* Monotonicity check */
     double delta = (iv->Fr - iv->Fl) / (iv->r - iv->l);
     char monotonic = (delta <= 3 * fl) && (delta <= 3 * fr);
 
+    /* If interpolation of the pdf is requested, do a second interpolation */
+    double pdf_error = 0.;
+    if (df != NULL) {
+        /* Evaluate derivatives of the normalized pdf at the endpoints */
+        double dfl = s->norm * df(iv->l, params) / fl;
+        double dfr = s->norm * df(iv->r, params) / fr;
+
+        /* Calculate the cubic Hermite approximation of the pdf */
+        iv->b0 = fl;
+        iv->b1 = (iv->Fr - iv->Fl) * dfl;
+        iv->b2 = 3 * (fr - fl) - (iv->Fr - iv->Fl) * (2. * dfl + 1. * dfr);
+        iv->b3 = 2 * (fl - fr) + (iv->Fr - iv->Fl) * (1. * dfl + 1. * dfr);
+
+        /* Evaluate the error in the pdf at the midpoint */
+        double fH = iv->b0 + iv->b1 * 0.5 + iv->b2 * 0.25 + iv->b3 * 0.125;
+        pdf_error = fabs(s->norm * f(H, params) - fH);
+    } else {
+        iv->b0 = 0.;
+        iv->b1 = 0.;
+        iv->b2 = 0.;
+        iv->b3 = 0.;
+    }
+
     /* If the error is too big or if the polynomial is not monotonic */
-    if (iv->error > 1e-6 || !monotonic) {
+    if (error > tol || pdf_error > tol || !monotonic) {
       /* Split the interval in half */
       split_interval(s, current_interval_id);
 
@@ -243,58 +270,53 @@ void clean_sampler(struct sampler *s) {
  * @param u Random number to be transformed
  */
 double draw_sampler(struct sampler *s, double u) {
-  /* Use the search table to find a nearby interval */
-  int If = floor(u * SEARCH_TABLE_LENGTH);
-  int idx = s->index[If < SEARCH_TABLE_LENGTH ? If : SEARCH_TABLE_LENGTH - 1];
+    /* Use the search table to find a nearby interval */
+    int tablength = SEARCH_TABLE_LENGTH;
+    int int_u = (int)(u * tablength);
+    int start = s->index[int_u < tablength ? int_u : tablength - 1];
+    int i;
 
-  /* Find the exact interval, i.e. the largest interval such that u > F(p) */
-  double maxJ = 0;
-  int int_i = idx;
-  for (int i = idx; i < s->intervalNum; i++) {
-    if (s->intervals[i].Fr < u && s->intervals[i].r > maxJ) {
-      maxJ = s->intervals[i].r;
-      int_i = i;
-    } else {
-      break;
+    /* Find the exact interval, i.e. the largest interval such that u > F(p) */
+    for (i = start; i < s->intervalNum-1; i++) {
+      if (s->intervals[i+1].Fr >= u) break;
     }
-  }
 
-  /* The correct interval */
-  struct interval *iv = &s->intervals[int_i];
+    /* The correct interval */
+    struct interval *iv = &s->intervals[i];
 
-  /* Evaluate F^-1(u) using the Hermite approximation of F in this interval */
-  double u_tilde = (u - iv->Fl) / (iv->Fr - iv->Fl);
-  double H = iv->a0 + iv->a1 * u_tilde + iv->a2 * u_tilde * u_tilde +
-             iv->a3 * u_tilde * u_tilde * u_tilde;
+    /* Evaluate F^-1(u) using the Hermite approximation of F in this interval */
+    double u_tilde = (u - iv->Fl) / (iv->Fr - iv->Fl);
+    double H = iv->a0 + iv->a1 * u_tilde + iv->a2 * u_tilde * u_tilde +
+               iv->a3 * u_tilde * u_tilde * u_tilde;
+
+    return H;
+}
+
+/**
+* @brief Transform a uniform random number into a custom variate X = F^-1(u)
+* and evaluate the probability density at f(X)
+*
+* @param u Random number to be transformed
+*/
+double draw_pdf(struct sampler *s, double u) {
+    /* Use the search table to find a nearby interval */
+    int tablength = SEARCH_TABLE_LENGTH;
+    int int_u = (int)(u * tablength);
+    int start = s->index[int_u < tablength ? int_u : tablength - 1];
+    int i;
+
+    /* Find the exact interval, i.e. the largest interval such that u > F(p) */
+    for (i = start; i < s->intervalNum-1; i++) {
+      if (s->intervals[i+1].Fr >= u) break;
+    }
+
+    /* The correct interval */
+    struct interval *iv = &s->intervals[i];
+
+    /* Evaluate f(F^-1(u)) using the Hermite approximation of f */
+    double u_tilde = (u - iv->Fl) / (iv->Fr - iv->Fl);
+    double H = iv->b0 + iv->b1 * u_tilde + iv->b2 * u_tilde * u_tilde +
+               iv->b3 * u_tilde * u_tilde * u_tilde;
 
   return H;
 }
-
-
-// double draw_sampler_short(struct sampler_short *s, double u) {
-  // /* Use the search table to find a nearby interval */
-  // int If = floor(u * SEARCH_TABLE_LENGTH);
-  // int idx = s->index[If < SEARCH_TABLE_LENGTH ? If : SEARCH_TABLE_LENGTH - 1];
-  //
-  // /* Find the exact interval, i.e. the largest interval such that u > F(p) */
-  // double maxJ = 0;
-  // int int_i = idx;
-  // for (int i = idx; i < s->intervalNum; i++) {
-  //   if (s->intervals[i].Fr < u && s->intervals[i].r > maxJ) {
-  //     maxJ = s->intervals[i].r;
-  //     int_i = i;
-  //   } else {
-  //     break;
-  //   }
-  // }
-  //
-  // /* The correct interval */
-  // struct interval_short *iv = &s->intervals[int_i];
-  //
-  // /* Evaluate F^-1(u) using the Hermite approximation of F in this interval */
-  // double u_tilde = (u - iv->Fl) / (iv->Fr - iv->Fl);
-  // double H = iv->a0 + iv->a1 * u_tilde + iv->a2 * u_tilde * u_tilde +
-  //            iv->a3 * u_tilde * u_tilde * u_tilde;
-  //
-  // return H;
-// }

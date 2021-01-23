@@ -29,12 +29,6 @@
 /* We allow for arbitrary probability density functions */
 typedef double (*pdf)(double x, void *params);
 
-/* PDF for a Fermi-Dirac distribution */
-double fd_pdf(double x, void *params);
-
-/* PDF for a Bose-Einstein distribution */
-double be_pdf(double x, void *params);
-
 /* A numerical inversion sampler that can be used for arbitrary distributions */
 struct sampler {
   /*! The normalization of the pdf */
@@ -48,6 +42,12 @@ struct sampler {
 
   /*! Pointer to the probability density function */
   pdf f;
+
+  /*! Optional pointer to derivative of the pdf */
+  pdf df;
+
+  /*! Tolerance for the Hermite interpolation */
+  double tol;
 
   /*! Array of optional parameters passed to the pdf */
   void *params;
@@ -68,7 +68,7 @@ struct interval {
   double l, r;            // endpoints left and right
   double Fl, Fr;          // cdf evaluations at endpoints
   double a0, a1, a2, a3;  // cubic Hermite coefficients
-  double error;           // error at midpoint
+  double b0, b1, b2, b3;  // cubic Hermite coefficients for the pdf
   int nid;                // the next interval
 };
 
@@ -80,10 +80,12 @@ static inline int compareByLeft(const void *a, const void *b) {
 }
 
 /* Methods that allow one to sample from arbitrary distribution */
-void init_sampler(struct sampler *s, pdf f, double xl, double xr, void *params);
+void init_sampler(struct sampler *s, pdf f, pdf df, double xl, double xr,
+                  double tol, void *params);
 void split_interval(struct sampler *s, int current_interval_id);
 void clean_sampler(struct sampler *s);
 double draw_sampler(struct sampler *s, double u);
+double draw_pdf(struct sampler *s, double u);
 
 
 
